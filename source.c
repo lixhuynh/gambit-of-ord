@@ -1,19 +1,20 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
 #include <time.h>
 
 void printRules();
 int playGame(int);
-void pickCard(int*, int*, int*, int*, int);
+void pickCard(int*, int*, int, bool);
 int offerBet(int, int);
 
 int main() {
-    int balance = 1000;
-    srand(time(NULL));
-
-    printf("Welcome to my Fork of the Storm simulator! Would you like an overview of the rules? (yes/no/quit)\n");
     char input[5];
+    int balance = 1000;
+
+    srand(time(NULL));
+    printf("Welcome to my Fork of the Storm simulator! Would you like an overview of the rules? (yes/no/quit)\n");
     scanf("%4s", input);
     while (strcmp(input, "yes") != 0 && strcmp(input, "no") != 0 && strcmp(input, "quit") != 0) {
         printf("Please enter a valid option. (yes/no/quit)\n");
@@ -36,9 +37,8 @@ int main() {
             balance = 1000;
             printf("Looks like you went into debt... Would you like to restart? (yes/quit)\n");
         }
-        else {
-            printf("Would you like to play again?\n");
-        }
+        else
+            printf("Would you like to play again? (yes/quit)\n");
         scanf("%4s", input);
         while (strcmp(input, "yes") != 0 && strcmp(input, "quit") != 0) {
             printf("Please enter a valid option. (yes/quit)\n");
@@ -53,7 +53,7 @@ int main() {
 void printRules() {
     printf(
         "===========================================\n"
-        "The Rules\n"
+        "THE RULES\n"
         "===========================================\n"
         "Round 1: Players pull one of 8 cards with replacement, keeping the result hidden.\n"
         "Round 2: Players pull one of 6 cards with replacement, revealing the result.\n"
@@ -68,22 +68,38 @@ void printRules() {
 int playGame(int balance) {
     int dealerScore = 0;
     int playerScore = 0;
-    int dealerRolls[3], playerRolls[3];
+    int dealerRolls[4], playerRolls[4];
     int totalBet = 0;
 
     printf("You currently have %dG.\n", balance);
     for (int i = 0; i < 3 && totalBet != -1; i ++) {
         int range = 8 - i * 2;
-        pickCard(&dealerScore, &playerScore, &dealerRolls[i], &playerRolls[i], range);
-        totalBet = offerBet(balance, totalBet);
+        pickCard(&dealerScore, &dealerRolls[i], range, true);
+        pickCard(&playerScore, &playerRolls[i], range, false);
+        totalBet += offerBet(balance, totalBet);
     }
 
-    printf("Let's reveal the dealer's rolls!\n");
-    for (int i = 0; i < 3 && dealerRolls[i] != 0; i++) {
-        printf("In Round %d, the dealer rolled a %d.\n", i, dealerRolls[i]);
-    }
+    printf("Let's reveal the dealer's pulls!\n");
+    for (int i = 0; i < 3 && dealerRolls[i] != 0; i++)
+        printf("In Round %d, the dealer pulled a %d.\n", i, dealerRolls[i]);
 
-    if (totalBet != -1) {
+    if (totalBet != -1) { // player did not fold
+
+        if (playerRolls[0] == playerRolls[1] || playerRolls[0] == playerRolls[2] || playerRolls[1] == playerRolls[2]) {
+            do { // player score explodes
+                printf("Because you pulled doubles, you pull another card from the pool of 4!\n");
+                pickCard(&playerScore, &playerRolls[3], 4, false);
+            } while (playerRolls[3] == playerRolls[0] || playerRolls[3] == playerRolls[1] || playerRolls[3] == playerRolls[2]);
+        }
+        if (dealerRolls[0] == dealerRolls[1] || dealerRolls[0] == dealerRolls[2] || dealerRolls[1] == dealerRolls[2]) {
+            do { // dealer score explodes
+                printf("Because the dealer pulled doubles, they pull another card from the pool of 4!\n");
+                pickCard(&dealerScore, &dealerRolls[3], 4, true);
+            } while (dealerRolls[3] == dealerRolls[0] || dealerRolls[3] == dealerRolls[1] || dealerRolls[3] == dealerRolls[2]);
+        }
+
+        printf("The dealer's score was %d, and your score was %d.\n", dealerScore, playerScore);
+
         if (dealerScore > playerScore) {
             balance -= totalBet;
             printf("You lost %dG. Your current balance is %dG.\n", totalBet, balance);
@@ -97,16 +113,17 @@ int playGame(int balance) {
     return balance;
 }
 
-void pickCard(int* dealerScore, int* playerScore, int* dealerRoll, int* playerRoll, int range) {
-    *dealerRoll = rand() % range + 1;
-    *playerRoll = rand() % range + 1;
-    *dealerScore += *dealerRoll;
-    *playerScore += *playerRoll;
-
-    printf("You pulled a card with value %d. Your current score is %d.\n", *playerRoll, *playerScore);
-    if (range != 8) {
-        printf("The dealer pulled a card with value %d.\n", *dealerRoll);
+void pickCard(int* score, int* roll, int range, bool isDealer) {
+    *roll = rand() % range + 1;
+    *score += *roll;
+    if (isDealer) {
+        if (range == 8)
+            printf("The dealer pulled a card.\n");
+        else
+            printf("The dealer pulled a card with value %d.\n", *roll);
     }
+    else
+        printf("You pulled a card with value %d. Your current total score is %d.\n", *roll, *score);
 }
 
 int offerBet(int balance, int totalBet) {
@@ -125,21 +142,24 @@ int offerBet(int balance, int totalBet) {
         return 0;
     }
     else if (strcmp("raise", input) == 0) {
-        printf("How much would you like to bet?\n");
-        scanf("%d", &bet);
-        while (bet <= 0 || (totalBet + bet) > balance) {
-            if (bet <= 0) {
-                printf("You must offer a bet amount greater than 0. Input your bet again.\n");
-            }
-            else {
-                printf("You cannot bet more than your current balance, which is %d. Input your bet again.\n", balance);
-            }
-            scanf("%d", &bet);
+        if (balance == totalBet) {
+            printf("You've already bet the maximum amount! Moving onto the next round...\n");
+            return 0;
         }
-        printf("You raised %d, bringing your total bet to %d. Moving onto the next round...\n", bet, totalBet + bet);
-        return totalBet + bet;
+        else {
+            printf("How much would you like to bet?\n");
+            scanf("%d", &bet);
+            while (bet <= 0 || (totalBet + bet) > balance) {
+                if (bet <= 0)
+                    printf("You must offer a bet amount greater than 0. Input your bet again.\n");
+                else
+                    printf("You cannot bet more than your current balance, which is %d. Input your bet again.\n", balance);
+                scanf("%d", &bet);
+            }
+            printf("You raised %dG, bringing your total bet to %dG. Moving onto the next round...\n", bet, totalBet + bet);
+            return bet;
+        }
     }
-    else {
+    else
         return -1;
-    }
 }
